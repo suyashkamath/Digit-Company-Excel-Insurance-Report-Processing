@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Insurance Policy Processor</title>
+</head>
+<body>
+    <h1>Insurance Policy Processing System</h1>
+    
+<div id="uploadSection">
+    <h2>Upload Excel File</h2>
+    <form id="uploadForm">
+        <div>
+            <label for="companyName">Company Name:</label>
+            <input type="text" id="companyName" name="companyName" required placeholder="Enter company name">
+        </div>
+        <br>
+        <div>
+            <label for="policyFile">Excel File:</label>
+            <input type="file" id="policyFile" name="policyFile" accept=".xlsx,.xls" required>
+        </div>
+        <br>
+        
+        <!-- OVERRIDE SECTION -->
+        <div>
+            <label>
+                <input type="checkbox" id="overrideToggle">
+                Override Segment, LOB, and Policy Type?
+            </label>
+        </div>
+        <br>
+        
+        <div id="overrideFields" style="display: none; margin-left: 20px; padding: 10px; border: 1px solid #ccc;">
+            <h3>Override Values</h3>
+            
+            <div>
+                <label for="overrideLOB">LOB:</label>
+                <select id="overrideLOB">
+                    <option value="">-- Select LOB --</option>
+                    <option value="TW">TW (Two Wheeler)</option>
+                    <option value="PVT CAR">PVT CAR (Private Car)</option>
+                    <option value="CV">CV (Commercial Vehicle)</option>
+                    <option value="BUS">BUS</option>
+                    <option value="TAXI">TAXI</option>
+                    <option value="MISD">MISD (Miscellaneous)</option>
+                </select>
+            </div>
+            <br>
+            
+            <div>
+                <label for="overrideSegment">Segment:</label>
+                <select id="overrideSegment">
+                    <option value="">-- Select Segment --</option>
+                    <optgroup label="Two Wheeler">
+                        <option value="1+5">1+5</option>
+                        <option value="TW SAOD + COMP">TW SAOD + COMP</option>
+                        <option value="TW TP">TW TP</option>
+                    </optgroup>
+                    <optgroup label="Private Car">
+                        <option value="PVT CAR COMP + SAOD">PVT CAR COMP + SAOD</option>
+                        <option value="PVT CAR TP">PVT CAR TP</option>
+                    </optgroup>
+                    <optgroup label="Commercial Vehicle">
+                        <option value="All GVW & PCV 3W, GCV 3W">All GVW & PCV 3W, GCV 3W</option>
+                    </optgroup>
+                    <optgroup label="Bus">
+                        <option value="SCHOOL BUS">SCHOOL BUS</option>
+                        <option value="STAFF BUS">STAFF BUS</option>
+                    </optgroup>
+                    <optgroup label="Taxi">
+                        <option value="TAXI">TAXI</option>
+                    </optgroup>
+                    <optgroup label="Miscellaneous">
+                        <option value="Misd, Tractor">Misd, Tractor</option>
+                    </optgroup>
+                </select>
+            </div>
+            <br>
+            
+            <div>
+                <label for="overridePolicyType">Policy Type (Optional):</label>
+                <select id="overridePolicyType">
+                    <option value="">-- Keep from file --</option>
+                    <option value="Comp">Comp</option>
+                    <option value="TP">TP</option>
+                </select>
+            </div>
+        </div>
+        <br>
+        
+        <button type="submit">Process File</button>
+    </form>
+</div>
+    <div id="loadingSection" style="display: none;">
+        <h2>Processing...</h2>
+        <p>Please wait while we process your file...</p>
+    </div>
+
+    <div id="resultsSection" style="display: none;">
+        <h2>Results</h2>
+        
+        <div id="metrics">
+            <h3>Summary Metrics</h3>
+            <p><strong>Total Records:</strong> <span id="totalRecords">-</span></p>
+            <p><strong>Average Payin:</strong> <span id="avgPayin">-</span>%</p>
+            <p><strong>Unique Segments:</strong> <span id="uniqueSegments">-</span></p>
+            <p><strong>Company:</strong> <span id="companyDisplay">-</span></p>
+        </div>
+
+        <div id="formulaSummary">
+            <h3>Formula Usage Summary</h3>
+            <div id="formulaList"></div>
+        </div>
+
+        <div id="downloadSection">
+            <h3>Download Results</h3>
+            <button id="downloadExcel">Download Excel</button>
+            <button id="downloadCSV">Download CSV</button>
+            <button id="downloadJSON">Download JSON</button>
+        </div>
+
+        <div id="dataPreview">
+            <h3>Data Preview</h3>
+            <div id="tableContainer"></div>
+        </div>
+    </div>
+
+    <div id="errorSection" style="display: none;">
+        <h2>Error</h2>
+        <p id="errorMessage"></p>
+        <button id="resetButton">Try Again</button>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8000';
+        
+        let currentResults = null;
+
+        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const companyName = document.getElementById('companyName').value;
+            const policyFile = document.getElementById('policyFile').files[0];
+            
+            if (!policyFile) {
+                alert('Please select a file');
+                return;
+            }
+
+            // Show loading
+            document.getElementById('uploadSection').style.display = 'none';
+            document.getElementById('resultsSection').style.display = 'none';
+            document.getElementById('errorSection').style.display = 'none';
+            document.getElementById('loadingSection').style.display = 'block';
+
+            // Create form data
+            const formData = new FormData();
+            formData.append('company_name', companyName);
+            formData.append('policy_file', policyFile);
+
+            try {
+                const response = await fetch(`${API_URL}/process`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Processing failed');
+                }
+
+                const results = await response.json();
+                currentResults = results;
+                displayResults(results);
+
+            } catch (error) {
+                console.error('Error:', error);
+                showError(error.message);
+            }
+        });
+
+        function displayResults(results) {
+            document.getElementById('loadingSection').style.display = 'none';
+            document.getElementById('resultsSection').style.display = 'block';
+
+            // Display metrics
+            const metrics = results.metrics;
+            document.getElementById('totalRecords').textContent = metrics.total_records;
+            document.getElementById('avgPayin').textContent = metrics.avg_payin;
+            document.getElementById('uniqueSegments').textContent = metrics.unique_segments;
+            document.getElementById('companyDisplay').textContent = metrics.company_name;
+
+            // Display formula summary
+            const formulaList = document.getElementById('formulaList');
+            formulaList.innerHTML = '';
+            for (const [formula, count] of Object.entries(metrics.formula_summary)) {
+                const p = document.createElement('p');
+                p.textContent = `${formula}: ${count} records`;
+                formulaList.appendChild(p);
+            }
+
+            // Display data preview table
+            displayTable(results.calculated_data);
+        }
+
+        function displayTable(data) {
+            const container = document.getElementById('tableContainer');
+            container.innerHTML = '';
+
+            if (!data || data.length === 0) {
+                container.textContent = 'No data to display';
+                return;
+            }
+
+            const table = document.createElement('table');
+            table.border = '1';
+            table.style.width = '100%';
+            table.style.borderCollapse = 'collapse';
+
+            // Create header
+            const thead = document.createElement('thead');
+            const headerRow = document.createElement('tr');
+            const headers = Object.keys(data[0]);
+            headers.forEach(header => {
+                const th = document.createElement('th');
+                th.textContent = header;
+                th.style.padding = '8px';
+                th.style.textAlign = 'left';
+                th.style.backgroundColor = '#f0f0f0';
+                headerRow.appendChild(th);
+            });
+            thead.appendChild(headerRow);
+            table.appendChild(thead);
+
+            // Create body
+            const tbody = document.createElement('tbody');
+            data.forEach((row, index) => {
+                const tr = document.createElement('tr');
+                if (index % 2 === 0) {
+                    tr.style.backgroundColor = '#f9f9f9';
+                }
+                headers.forEach(header => {
+                    const td = document.createElement('td');
+                    td.textContent = row[header];
+                    td.style.padding = '8px';
+                    td.style.border = '1px solid #ddd';
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            });
+            table.appendChild(tbody);
+
+            container.appendChild(table);
+        }
+
+        function showError(message) {
+            document.getElementById('loadingSection').style.display = 'none';
+            document.getElementById('errorSection').style.display = 'block';
+            document.getElementById('errorMessage').textContent = message;
+        }
+
+        document.getElementById('resetButton').addEventListener('click', () => {
+            document.getElementById('errorSection').style.display = 'none';
+            document.getElementById('uploadSection').style.display = 'block';
+            document.getElementById('uploadForm').reset();
+        });
+
+        // Download handlers
+        document.getElementById('downloadExcel').addEventListener('click', () => {
+            if (!currentResults || !currentResults.excel_data) {
+                alert('No data to download');
+                return;
+            }
+            const blob = base64ToBlob(currentResults.excel_data, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            downloadBlob(blob, `${currentResults.metrics.company_name}_report.xlsx`);
+        });
+
+        document.getElementById('downloadCSV').addEventListener('click', () => {
+            if (!currentResults || !currentResults.csv_data) {
+                alert('No data to download');
+                return;
+            }
+            const blob = new Blob([currentResults.csv_data], { type: 'text/csv' });
+            downloadBlob(blob, `${currentResults.metrics.company_name}_report.csv`);
+        });
+
+        document.getElementById('downloadJSON').addEventListener('click', () => {
+            if (!currentResults || !currentResults.json_data) {
+                alert('No data to download');
+                return;
+            }
+            const blob = new Blob([currentResults.json_data], { type: 'application/json' });
+            downloadBlob(blob, `${currentResults.metrics.company_name}_report.json`);
+        });
+
+        function base64ToBlob(base64, mimeType) {
+            const byteCharacters = atob(base64);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            return new Blob([byteArray], { type: mimeType });
+        }
+
+        function downloadBlob(blob, filename) {
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        }
+
+        // Add this after the script tag
+document.getElementById('overrideToggle').addEventListener('change', function() {
+    const overrideFields = document.getElementById('overrideFields');
+    overrideFields.style.display = this.checked ? 'block' : 'none';
+});
+
+// Update the form submission
+document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const companyName = document.getElementById('companyName').value;
+    const policyFile = document.getElementById('policyFile').files[0];
+    const overrideEnabled = document.getElementById('overrideToggle').checked;
+    
+    if (!policyFile) {
+        alert('Please select a file');
+        return;
+    }
+
+    // Validate override fields if enabled
+    if (overrideEnabled) {
+        const lob = document.getElementById('overrideLOB').value;
+        const segment = document.getElementById('overrideSegment').value;
+        
+        if (!lob || !segment) {
+            alert('Please select both LOB and Segment for override');
+            return;
+        }
+    }
+
+    // Show loading
+    document.getElementById('uploadSection').style.display = 'none';
+    document.getElementById('resultsSection').style.display = 'none';
+    document.getElementById('errorSection').style.display = 'none';
+    document.getElementById('loadingSection').style.display = 'block';
+
+    // Create form data
+    const formData = new FormData();
+    formData.append('company_name', companyName);
+    formData.append('policy_file', policyFile);
+    formData.append('override_enabled', overrideEnabled ? 'true' : 'false');
+    
+    if (overrideEnabled) {
+        formData.append('override_lob', document.getElementById('overrideLOB').value);
+        formData.append('override_segment', document.getElementById('overrideSegment').value);
+        const policyType = document.getElementById('overridePolicyType').value;
+        if (policyType) {
+            formData.append('override_policy_type', policyType);
+        }
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/process`, {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Processing failed');
+        }
+
+        const results = await response.json();
+        currentResults = results;
+        displayResults(results);
+
+    } catch (error) {
+        console.error('Error:', error);
+        showError(error.message);
+    }
+});
+    </script>
+    
+</body>
+</html>
