@@ -10,7 +10,7 @@ import logging
 import pandas as pd
 from openai import OpenAI
 from pathlib import Path
-
+from typing import Optional
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -317,10 +317,19 @@ def apply_formula(policy_data):
     
     return calculated_data
 
-def process_files(file_bytes: bytes, filename: str, company_name: str):
+def process_files(
+    file_bytes: bytes, 
+    filename: str, 
+    company_name: str,
+    override_enabled: bool = False,
+    override_lob: Optional[str] = None,
+    override_segment: Optional[str] = None,
+    override_policy_type: Optional[str] = None
+):
     """Main processing function"""
     try:
         logger.info(f"🚀 Processing {filename} for {company_name}")
+        logger.info(f"Override enabled: {override_enabled}")
         
         # Extract Excel data (hardcoded)
         excel_records = extract_excel_data(file_bytes, filename)
@@ -330,19 +339,30 @@ def process_files(file_bytes: bytes, filename: str, company_name: str):
         
         logger.info(f"✅ Extracted {len(excel_records)} records from Excel")
         
-        # Map segments using OpenAI
+        # Map segments using OpenAI OR override
         for record in excel_records:
-            mapping = map_segment_to_lob_and_standard(
-                record['segment'], 
-                record['policy_type']
-            )
-            record['LOB'] = mapping['LOB']
-            record['SEGMENT'] = mapping['SEGMENT']
+            if override_enabled and override_lob and override_segment:
+                # OVERRIDE MODE
+                logger.info(f"🔄 Overriding with LOB={override_lob}, Segment={override_segment}")
+                record['LOB'] = override_lob
+                record['SEGMENT'] = override_segment
+                if override_policy_type:
+                    record['policy_type'] = override_policy_type
+            else:
+                # NORMAL MODE - Use OpenAI mapping
+                mapping = map_segment_to_lob_and_standard(
+                    record['segment'], 
+                    record['policy_type']
+                )
+                record['LOB'] = mapping['LOB']
+                record['SEGMENT'] = mapping['SEGMENT']
             
             # Classify payin
             payin_val, payin_cat = classify_payin(record.get('payin', 0))
             record['Payin_Value'] = payin_val
             record['Payin_Category'] = payin_cat
+        
+       
         
         # Apply formulas
         calculated_data = apply_formula(excel_records)
@@ -415,14 +435,30 @@ async def root():
     """)
 
 @app.post("/process")
-async def process_policy(company_name: str = Form(...), policy_file: UploadFile = File(...)):
+async def process_policy(
+    company_name: str = Form(...), 
+    policy_file: UploadFile = File(...),
+    override_enabled: str = Form(default="false"),
+    override_lob: Optional[str] = Form(default=None),
+    override_segment: Optional[str] = Form(default=None),
+    override_policy_type: Optional[str] = Form(default=None)
+):
     """Process Excel file"""
     try:
         file_bytes = await policy_file.read()
         if not file_bytes:
             return JSONResponse(status_code=400, content={"error": "Empty file"})
         
-        results = process_files(file_bytes, policy_file.filename, company_name)
+        # Pass override parameters
+        results = process_files(
+            file_bytes, 
+            policy_file.filename, 
+            company_name,
+            override_enabled == "true",
+            override_lob,
+            override_segment,
+            override_policy_type
+        )
         return JSONResponse(content=results)
         
     except ValueError as e:
@@ -430,7 +466,8 @@ async def process_policy(company_name: str = Form(...), policy_file: UploadFile 
     except Exception as e:
         logger.error(f"Error: {str(e)}", exc_info=True)
         return JSONResponse(status_code=500, content={"error": f"Processing failed: {str(e)}"})
-
+    
+    
 @app.get("/health")
 async def health_check():
     """Health check"""
