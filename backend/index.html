@@ -21,6 +21,23 @@
             <input type="file" id="policyFile" name="policyFile" accept=".xlsx,.xls" required>
         </div>
         <br>
+ 
+        <!-- WORKSHEET SELECTION SECTION -->
+        <div id="worksheetSection" style="display: none; margin-left: 20px; padding: 10px; border: 1px solid #ccc; background-color: #f9f9f9;">
+            <h3>📊 Multiple Worksheets Detected</h3>
+            <p>This file contains multiple worksheets. Please select which one to process:</p>
+            <div>
+                <label for="worksheetSelect">Select Worksheet:</label>
+                <select id="worksheetSelect" style="padding: 5px; min-width: 200px;">
+                    <option value="">-- Select Worksheet --</option>
+                </select>
+            </div>
+            <br>
+            <button type="button" id="processWorksheetBtn">Process This Worksheet</button>
+            <button type="button" id="exitWorksheetBtn">Exit</button>
+            <div id="processedSheets" style="margin-top: 10px;"></div>
+        </div>       
+        <br>
         
         <!-- OVERRIDE SECTION -->
         <div>
@@ -92,6 +109,7 @@
         <button type="submit">Process File</button>
     </form>
 </div>
+
     <div id="loadingSection" style="display: none;">
         <h2>Processing...</h2>
         <p>Please wait while we process your file...</p>
@@ -136,16 +154,188 @@
         const API_URL = 'http://localhost:8000';
         
         let currentResults = null;
+        let currentFileBytes = null;
+        let currentCompanyName = null;
+        let availableWorksheets = [];
+        let processedWorksheets = [];
 
+        // File change handler - check for multiple worksheets
+        document.getElementById('policyFile').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            currentFileBytes = file;
+            
+            // Check if file has multiple worksheets
+            const formData = new FormData();
+            formData.append('policy_file', file);
+            
+            try {
+                const response = await fetch(`${API_URL}/list-worksheets`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.worksheets && data.worksheets.length > 1) {
+                    // Multiple worksheets - show selection
+                    availableWorksheets = data.worksheets;
+                    const select = document.getElementById('worksheetSelect');
+                    select.innerHTML = '<option value="">-- Select Worksheet --</option>';
+                    data.worksheets.forEach(sheet => {
+                        const option = document.createElement('option');
+                        option.value = sheet;
+                        option.textContent = sheet;
+                        select.appendChild(option);
+                    });
+                    document.getElementById('worksheetSection').style.display = 'block';
+                    alert(`This file contains ${data.worksheets.length} worksheets. Please select one to process.`);
+                } else {
+                    // Single worksheet - hide selection
+                    document.getElementById('worksheetSection').style.display = 'none';
+                    availableWorksheets = [];
+                    processedWorksheets = [];
+                }
+            } catch (error) {
+                console.error('Error checking worksheets:', error);
+            }
+        });
+
+        // Process selected worksheet
+        document.getElementById('processWorksheetBtn').addEventListener('click', async () => {
+            const selectedSheet = document.getElementById('worksheetSelect').value;
+            if (!selectedSheet) {
+                alert('Please select a worksheet');
+                return;
+            }
+            
+            if (processedWorksheets.includes(selectedSheet)) {
+                alert('This worksheet has already been processed!');
+                return;
+            }
+            
+            await processWorksheet(selectedSheet);
+        });
+
+        // Exit button
+        document.getElementById('exitWorksheetBtn').addEventListener('click', () => {
+            document.getElementById('worksheetSection').style.display = 'none';
+            document.getElementById('uploadForm').reset();
+            currentFileBytes = null;
+            processedWorksheets = [];
+            availableWorksheets = [];
+            document.getElementById('processedSheets').innerHTML = '';
+        });
+
+        async function processWorksheet(sheetName) {
+            const companyName = document.getElementById('companyName').value;
+            if (!companyName) {
+                alert('Please enter company name');
+                return;
+            }
+            
+            const overrideEnabled = document.getElementById('overrideToggle').checked;
+            
+            if (overrideEnabled) {
+                const lob = document.getElementById('overrideLOB').value;
+                const segment = document.getElementById('overrideSegment').value;
+                if (!lob || !segment) {
+                    alert('Please select both LOB and Segment for override');
+                    return;
+                }
+            }
+            
+            // Show loading
+            document.getElementById('uploadSection').style.display = 'none';
+            document.getElementById('resultsSection').style.display = 'none';
+            document.getElementById('errorSection').style.display = 'none';
+            document.getElementById('loadingSection').style.display = 'block';
+            
+            const formData = new FormData();
+            formData.append('company_name', companyName);
+            formData.append('policy_file', currentFileBytes);
+            formData.append('sheet_name', sheetName);
+            formData.append('override_enabled', overrideEnabled ? 'true' : 'false');
+            
+            if (overrideEnabled) {
+                formData.append('override_lob', document.getElementById('overrideLOB').value);
+                formData.append('override_segment', document.getElementById('overrideSegment').value);
+                const policyType = document.getElementById('overridePolicyType').value;
+                if (policyType) {
+                    formData.append('override_policy_type', policyType);
+                }
+            }
+            
+            try {
+                const response = await fetch(`${API_URL}/process`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Processing failed');
+                }
+                
+                const results = await response.json();
+                currentResults = results;
+                
+                // Mark as processed
+                processedWorksheets.push(sheetName);
+                
+                // Update processed list
+                const processedDiv = document.getElementById('processedSheets');
+                processedDiv.innerHTML += `<p style="color: green;">✅ Processed: ${sheetName}</p>`;
+                
+                // Show results
+                displayResults(results);
+                
+                // Show upload section again for next worksheet
+                document.getElementById('uploadSection').style.display = 'block';
+                
+            } catch (error) {
+                console.error('Error:', error);
+                showError(error.message);
+                document.getElementById('uploadSection').style.display = 'block';
+            }
+        }
+
+        // Override toggle
+        document.getElementById('overrideToggle').addEventListener('change', function() {
+            const overrideFields = document.getElementById('overrideFields');
+            overrideFields.style.display = this.checked ? 'block' : 'none';
+        });
+
+        // Main form submission (for single worksheet files)
         document.getElementById('uploadForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             
             const companyName = document.getElementById('companyName').value;
             const policyFile = document.getElementById('policyFile').files[0];
+            const overrideEnabled = document.getElementById('overrideToggle').checked;
             
             if (!policyFile) {
                 alert('Please select a file');
                 return;
+            }
+            
+            // Check if worksheet selection is visible
+            const worksheetSection = document.getElementById('worksheetSection');
+            if (worksheetSection.style.display !== 'none') {
+                alert('Please use the "Process This Worksheet" button to process selected worksheets');
+                return;
+            }
+            
+            // Validate override fields if enabled
+            if (overrideEnabled) {
+                const lob = document.getElementById('overrideLOB').value;
+                const segment = document.getElementById('overrideSegment').value;
+                
+                if (!lob || !segment) {
+                    alert('Please select both LOB and Segment for override');
+                    return;
+                }
             }
 
             // Show loading
@@ -158,6 +348,16 @@
             const formData = new FormData();
             formData.append('company_name', companyName);
             formData.append('policy_file', policyFile);
+            formData.append('override_enabled', overrideEnabled ? 'true' : 'false');
+            
+            if (overrideEnabled) {
+                formData.append('override_lob', document.getElementById('overrideLOB').value);
+                formData.append('override_segment', document.getElementById('overrideSegment').value);
+                const policyType = document.getElementById('overridePolicyType').value;
+                if (policyType) {
+                    formData.append('override_policy_type', policyType);
+                }
+            }
 
             try {
                 const response = await fetch(`${API_URL}/process`, {
@@ -314,78 +514,6 @@
             window.URL.revokeObjectURL(url);
             document.body.removeChild(a);
         }
-
-        // Add this after the script tag
-document.getElementById('overrideToggle').addEventListener('change', function() {
-    const overrideFields = document.getElementById('overrideFields');
-    overrideFields.style.display = this.checked ? 'block' : 'none';
-});
-
-// Update the form submission
-document.getElementById('uploadForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    
-    const companyName = document.getElementById('companyName').value;
-    const policyFile = document.getElementById('policyFile').files[0];
-    const overrideEnabled = document.getElementById('overrideToggle').checked;
-    
-    if (!policyFile) {
-        alert('Please select a file');
-        return;
-    }
-
-    // Validate override fields if enabled
-    if (overrideEnabled) {
-        const lob = document.getElementById('overrideLOB').value;
-        const segment = document.getElementById('overrideSegment').value;
-        
-        if (!lob || !segment) {
-            alert('Please select both LOB and Segment for override');
-            return;
-        }
-    }
-
-    // Show loading
-    document.getElementById('uploadSection').style.display = 'none';
-    document.getElementById('resultsSection').style.display = 'none';
-    document.getElementById('errorSection').style.display = 'none';
-    document.getElementById('loadingSection').style.display = 'block';
-
-    // Create form data
-    const formData = new FormData();
-    formData.append('company_name', companyName);
-    formData.append('policy_file', policyFile);
-    formData.append('override_enabled', overrideEnabled ? 'true' : 'false');
-    
-    if (overrideEnabled) {
-        formData.append('override_lob', document.getElementById('overrideLOB').value);
-        formData.append('override_segment', document.getElementById('overrideSegment').value);
-        const policyType = document.getElementById('overridePolicyType').value;
-        if (policyType) {
-            formData.append('override_policy_type', policyType);
-        }
-    }
-
-    try {
-        const response = await fetch(`${API_URL}/process`, {
-            method: 'POST',
-            body: formData
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Processing failed');
-        }
-
-        const results = await response.json();
-        currentResults = results;
-        displayResults(results);
-
-    } catch (error) {
-        console.error('Error:', error);
-        showError(error.message);
-    }
-});
     </script>
     
 </body>
