@@ -371,7 +371,7 @@ def process_electric_sheet(content, sheet_name, override_enabled, override_lob, 
             
             # Map state
             state = next((v for k, v in STATE_MAPPING.items() if k.upper() in city_cluster.upper()), "UNKNOWN")
-            
+             
             # CVOD section (columns 5, 6)
             cvod_cd1 = safe_float(row.iloc[5]) if len(row) > 5 else None
             cvod_cd2 = safe_float(row.iloc[6]) if len(row) > 6 else None

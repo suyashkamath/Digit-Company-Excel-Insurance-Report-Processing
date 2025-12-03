@@ -697,9 +697,9 @@ def extract_excel_data(file_bytes: bytes, filename: str, sheet_name: str = None)
         
         # Map columns - handle different possible names
         column_mapping = {
-            'state': ['state', 'State', 'STATE'],
+            'state': ['state', 'State', 'STATE','Agency/PB Clusters'],
             'cluster': ['cluster', 'Cluster', 'CLUSTER', 'location', 'Location'],
-            'segment': ['segment', 'Segment', 'SEGMENT'],
+            'segment': ['segment', 'Segment', 'SEGMENT','Agency/PB Seg'],
             'status': ['status', 'Status', 'STATUS', 'policy_type', 'Policy Type', 'type'],
             'cd2': ['cd2', 'CD2', 'payin', 'Payin', 'PAYIN']
         }
