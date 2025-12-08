@@ -164,158 +164,275 @@ async def list_worksheets(policy_file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail=str(e))
 
 # ------------------- CV SHEET PROCESSOR -------------------
+# def process_cv_sheet(content, sheet_name, override_enabled, override_lob, override_segment, override_policy_type):
+#     records = []
+#     try:
+#         df = pd.read_excel(io.BytesIO(content), sheet_name=sheet_name, header=None)
+#         # Extract regions from row 0 (row1 in text)
+#         regions = []
+#         current_region = ""
+#         for col in range(3, df.shape[1], 3):
+#             val = df.iloc[0, col]
+#             if pd.notna(val):
+#                 current_region = str(val).strip()
+#             regions.append(current_region)
+
+#         # Data starts from row 3 (0-indexed)
+#         data_df = df.iloc[3:].reset_index(drop=True)
+#         data_df.columns = df.iloc[2]  # Set column names from row 2 (Segment, Make, Carrier Type, CD1, CD2, CD2, ...)
+
+#         for idx, row in data_df.iterrows():
+#             if pd.isna(row[0]) or str(row[0]).strip() == "":
+#                 continue
+
+#             segment = str(row[0]).strip()
+#             make = str(row[1]).strip()
+#             carrier_type = str(row[2]).strip()
+
+#             for i, region in enumerate(regions):
+#                 base_col = 3 + i * 3
+#                 comp_cd1 = safe_float(row[base_col])
+#                 comp_cd2_val = row[base_col + 1]
+#                 tp_cd2_val = row[base_col + 2]
+
+#                 # Handle Comp CD2
+#                 if pd.notna(comp_cd2_val):
+#                     if isinstance(comp_cd2_val, (int, float)):
+#                         comp_cd2 = safe_float(comp_cd2_val)
+#                         if comp_cd2 is not None:
+#                             remark = f"Make: {make} Carrier Type: {carrier_type}"
+#                             state = STATE_MAPPING.get(region, "UNKNOWN")
+#                             lob_final = override_lob if override_enabled == "true" and override_lob else "CV"
+#                             segment_final = override_segment if override_enabled == "true" and override_segment else "All GVW & PCV 3W, GCV 3W"
+#                             policy_type_final = override_policy_type if override_policy_type else "Comp"
+#                             payout, formula, rule_exp = calculate_payout_with_formula(lob_final, segment_final, policy_type_final, comp_cd2)
+#                             records.append({
+#                                 "State": state.upper(),
+#                                 "Location/Cluster": region,
+#                                 "Original Segment": segment,
+#                                 "Mapped Segment": segment_final,
+#                                 "LOB": lob_final,
+#                                 "Policy Type": policy_type_final,
+#                                 "Payin (CD2)": f"{comp_cd2:.2f}%",
+#                                 "Payin Category": get_payin_category(comp_cd2),
+#                                 "Calculated Payout": f"{payout:.2f}%",
+#                                 "Formula Used": formula,
+#                                 "Rule Explanation": rule_exp,
+#                                 "Remarks": remark
+#                             })
+#                     elif isinstance(comp_cd2_val, str):
+#                         # Split the string into remarks and values
+#                         items = re.split(r'(\d+\.?\d*%)', comp_cd2_val)
+#                         current_remark = ""
+#                         for item in items:
+#                             item = item.strip()
+#                             if '%' in item:
+#                                 value = safe_float(item)
+#                                 if value is not None:
+#                                     full_remark = current_remark + " Make: " + make + " Carrier Type: " + carrier_type
+#                                     state = STATE_MAPPING.get(region, "UNKNOWN")
+#                                     lob_final = override_lob if override_enabled == "true" and override_lob else "CV"
+#                                     segment_final = override_segment if override_enabled == "true" and override_segment else "All GVW & PCV 3W, GCV 3W"
+#                                     policy_type_final = override_policy_type if override_policy_type else "Comp"
+#                                     payout, formula, rule_exp = calculate_payout_with_formula(lob_final, segment_final, policy_type_final, value)
+#                                     records.append({
+#                                         "State": state.upper(),
+#                                         "Location/Cluster": region,
+#                                         "Original Segment": segment,
+#                                         "Mapped Segment": segment_final,
+#                                         "LOB": lob_final,
+#                                         "Policy Type": policy_type_final,
+#                                         "Payin (CD2)": f"{value:.2f}%",
+#                                         "Payin Category": get_payin_category(value),
+#                                         "Calculated Payout": f"{payout:.2f}%",
+#                                         "Formula Used": formula,
+#                                         "Rule Explanation": rule_exp,
+#                                         "Remarks": full_remark.strip()
+#                                     })
+#                                 current_remark = ""
+#                             else:
+#                                 current_remark += " " + item
+
+#                 # Handle TP CD2 similarly
+#                 if pd.notna(tp_cd2_val):
+#                     if isinstance(tp_cd2_val, (int, float)):
+#                         tp_cd2 = safe_float(tp_cd2_val)
+#                         if tp_cd2 is not None:
+#                             remark = f"Make: {make} Carrier Type: {carrier_type}"
+#                             state = STATE_MAPPING.get(region, "UNKNOWN")
+#                             lob_final = override_lob if override_enabled == "true" and override_lob else "CV"
+#                             segment_final = override_segment if override_enabled == "true" and override_segment else "All GVW & PCV 3W, GCV 3W"
+#                             policy_type_final = override_policy_type if override_policy_type else "TP"
+#                             payout, formula, rule_exp = calculate_payout_with_formula(lob_final, segment_final, policy_type_final, tp_cd2)
+#                             records.append({
+#                                 "State": state.upper(),
+#                                 "Location/Cluster": region,
+#                                 "Original Segment": segment,
+#                                 "Mapped Segment": segment_final,
+#                                 "LOB": lob_final,
+#                                 "Policy Type": policy_type_final,
+#                                 "Payin (CD2)": f"{tp_cd2:.2f}%",
+#                                 "Payin Category": get_payin_category(tp_cd2),
+#                                 "Calculated Payout": f"{payout:.2f}%",
+#                                 "Formula Used": formula,
+#                                 "Rule Explanation": rule_exp,
+#                                 "Remarks": remark
+#                             })
+#                     elif isinstance(tp_cd2_val, str):
+#                         items = re.split(r'(\d+\.?\d*%)', tp_cd2_val)
+#                         current_remark = ""
+#                         for item in items:
+#                             item = item.strip()
+#                             if '%' in item:
+#                                 value = safe_float(item)
+#                                 if value is not None:
+#                                     full_remark = current_remark + " Make: " + make + " Carrier Type: " + carrier_type
+#                                     state = STATE_MAPPING.get(region, "UNKNOWN")
+#                                     lob_final = override_lob if override_enabled == "true" and override_lob else "CV"
+#                                     segment_final = override_segment if override_enabled == "true" and override_segment else "All GVW & PCV 3W, GCV 3W"
+#                                     policy_type_final = override_policy_type if override_policy_type else "TP"
+#                                     payout, formula, rule_exp = calculate_payout_with_formula(lob_final, segment_final, policy_type_final, value)
+#                                     records.append({
+#                                         "State": state.upper(),
+#                                         "Location/Cluster": region,
+#                                         "Original Segment": segment,
+#                                         "Mapped Segment": segment_final,
+#                                         "LOB": lob_final,
+#                                         "Policy Type": policy_type_final,
+#                                         "Payin (CD2)": f"{value:.2f}%",
+#                                         "Payin Category": get_payin_category(value),
+#                                         "Calculated Payout": f"{payout:.2f}%",
+#                                         "Formula Used": formula,
+#                                         "Rule Explanation": rule_exp,
+#                                         "Remarks": full_remark.strip()
+#                                     })
+#                                 current_remark = ""
+#                             else:
+#                                 current_remark += " " + item
+
+#         return records
+
+#     except Exception as e:
+#         print(f"Error processing CV sheet: {str(e)}")
+#         return []
+# ------------------- FINAL CV SHEET PROCESSOR (CD1 Ignored, Only CD2 Used) -------------------
 def process_cv_sheet(content, sheet_name, override_enabled, override_lob, override_segment, override_policy_type):
     records = []
     try:
         df = pd.read_excel(io.BytesIO(content), sheet_name=sheet_name, header=None)
-        # Extract regions from row 0 (row1 in text)
-        regions = []
+
+        # Map each column to its region (from row 0)
+        region_map = {}
         current_region = ""
-        for col in range(3, df.shape[1], 3):
-            val = df.iloc[0, col]
-            if pd.notna(val):
-                current_region = str(val).strip()
-            regions.append(current_region)
+        for col in range(df.shape[1]):
+            cell = df.iloc[0, col]
+            if pd.notna(cell) and str(cell).strip():
+                current_region = str(cell).strip()
+            region_map[col] = current_region
 
-        # Data starts from row 3 (0-indexed)
-        data_df = df.iloc[3:].reset_index(drop=True)
-        data_df.columns = df.iloc[2]  # Set column names from row 2 (Segment, Make, Carrier Type, CD1, CD2, CD2, ...)
+        # Header row 2 has "CD2" labels — use to identify CD2 columns
+        cd2_columns = []
+        for col in range(df.shape[1]):
+            header_cell = df.iloc[2, col] if len(df) > 2 else ""
+            if pd.notna(header_cell) and "CD2" in str(header_cell).upper():
+                cd2_columns.append(col)
 
-        for idx, row in data_df.iterrows():
-            if pd.isna(row[0]) or str(row[0]).strip() == "":
+        # Data starts from row 3
+        for idx in range(3, len(df)):
+            row = df.iloc[idx]
+            cluster = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ""
+            if not cluster or cluster.lower() in ["", "nan"]:
                 continue
 
-            segment = str(row[0]).strip()
-            make = str(row[1]).strip()
-            carrier_type = str(row[2]).strip()
+            segment = str(row.iloc[1]).strip() if len(row) > 1 and pd.notna(row.iloc[1]) else ""
+            age_info = str(row.iloc[2]).strip() if len(row) > 2 and pd.notna(row.iloc[2]) else "All"
+            make = str(row.iloc[3]).strip() if len(row) > 3 and pd.notna(row.iloc[3]) else "All"
 
-            for i, region in enumerate(regions):
-                base_col = 3 + i * 3
-                comp_cd1 = safe_float(row[base_col])
-                comp_cd2_val = row[base_col + 1]
-                tp_cd2_val = row[base_col + 2]
+            # Process only CD2 columns
+            for cd2_col in cd2_columns:
+                if cd2_col >= len(row):
+                    continue
 
-                # Handle Comp CD2
-                if pd.notna(comp_cd2_val):
-                    if isinstance(comp_cd2_val, (int, float)):
-                        comp_cd2 = safe_float(comp_cd2_val)
-                        if comp_cd2 is not None:
-                            remark = f"Make: {make} Carrier Type: {carrier_type}"
-                            state = STATE_MAPPING.get(region, "UNKNOWN")
-                            lob_final = override_lob if override_enabled == "true" and override_lob else "CV"
-                            segment_final = override_segment if override_enabled == "true" and override_segment else "All GVW & PCV 3W, GCV 3W"
-                            policy_type_final = override_policy_type if override_policy_type else "Comp"
-                            payout, formula, rule_exp = calculate_payout_with_formula(lob_final, segment_final, policy_type_final, comp_cd2)
-                            records.append({
-                                "State": state.upper(),
-                                "Location/Cluster": region,
-                                "Original Segment": segment,
-                                "Mapped Segment": segment_final,
-                                "LOB": lob_final,
-                                "Policy Type": policy_type_final,
-                                "Payin (CD2)": f"{comp_cd2:.2f}%",
-                                "Payin Category": get_payin_category(comp_cd2),
-                                "Calculated Payout": f"{payout:.2f}%",
-                                "Formula Used": formula,
-                                "Rule Explanation": rule_exp,
-                                "Remarks": remark
-                            })
-                    elif isinstance(comp_cd2_val, str):
-                        # Split the string into remarks and values
-                        items = re.split(r'(\d+\.?\d*%)', comp_cd2_val)
-                        current_remark = ""
-                        for item in items:
-                            item = item.strip()
-                            if '%' in item:
-                                value = safe_float(item)
-                                if value is not None:
-                                    full_remark = current_remark + " Make: " + make + " Carrier Type: " + carrier_type
-                                    state = STATE_MAPPING.get(region, "UNKNOWN")
-                                    lob_final = override_lob if override_enabled == "true" and override_lob else "CV"
-                                    segment_final = override_segment if override_enabled == "true" and override_segment else "All GVW & PCV 3W, GCV 3W"
-                                    policy_type_final = override_policy_type if override_policy_type else "Comp"
-                                    payout, formula, rule_exp = calculate_payout_with_formula(lob_final, segment_final, policy_type_final, value)
-                                    records.append({
-                                        "State": state.upper(),
-                                        "Location/Cluster": region,
-                                        "Original Segment": segment,
-                                        "Mapped Segment": segment_final,
-                                        "LOB": lob_final,
-                                        "Policy Type": policy_type_final,
-                                        "Payin (CD2)": f"{value:.2f}%",
-                                        "Payin Category": get_payin_category(value),
-                                        "Calculated Payout": f"{payout:.2f}%",
-                                        "Formula Used": formula,
-                                        "Rule Explanation": rule_exp,
-                                        "Remarks": full_remark.strip()
-                                    })
-                                current_remark = ""
-                            else:
-                                current_remark += " " + item
+                region = region_map.get(cd2_col, "UNKNOWN")
+                state = next((v for k, v in STATE_MAPPING.items() if k.upper() in region.upper()), region.upper())
 
-                # Handle TP CD2 similarly
-                if pd.notna(tp_cd2_val):
-                    if isinstance(tp_cd2_val, (int, float)):
-                        tp_cd2 = safe_float(tp_cd2_val)
-                        if tp_cd2 is not None:
-                            remark = f"Make: {make} Carrier Type: {carrier_type}"
-                            state = STATE_MAPPING.get(region, "UNKNOWN")
-                            lob_final = override_lob if override_enabled == "true" and override_lob else "CV"
-                            segment_final = override_segment if override_enabled == "true" and override_segment else "All GVW & PCV 3W, GCV 3W"
-                            policy_type_final = override_policy_type if override_policy_type else "TP"
-                            payout, formula, rule_exp = calculate_payout_with_formula(lob_final, segment_final, policy_type_final, tp_cd2)
-                            records.append({
-                                "State": state.upper(),
-                                "Location/Cluster": region,
-                                "Original Segment": segment,
-                                "Mapped Segment": segment_final,
-                                "LOB": lob_final,
-                                "Policy Type": policy_type_final,
-                                "Payin (CD2)": f"{tp_cd2:.2f}%",
-                                "Payin Category": get_payin_category(tp_cd2),
-                                "Calculated Payout": f"{payout:.2f}%",
-                                "Formula Used": formula,
-                                "Rule Explanation": rule_exp,
-                                "Remarks": remark
-                            })
-                    elif isinstance(tp_cd2_val, str):
-                        items = re.split(r'(\d+\.?\d*%)', tp_cd2_val)
-                        current_remark = ""
-                        for item in items:
-                            item = item.strip()
-                            if '%' in item:
-                                value = safe_float(item)
-                                if value is not None:
-                                    full_remark = current_remark + " Make: " + make + " Carrier Type: " + carrier_type
-                                    state = STATE_MAPPING.get(region, "UNKNOWN")
-                                    lob_final = override_lob if override_enabled == "true" and override_lob else "CV"
-                                    segment_final = override_segment if override_enabled == "true" and override_segment else "All GVW & PCV 3W, GCV 3W"
-                                    policy_type_final = override_policy_type if override_policy_type else "TP"
-                                    payout, formula, rule_exp = calculate_payout_with_formula(lob_final, segment_final, policy_type_final, value)
-                                    records.append({
-                                        "State": state.upper(),
-                                        "Location/Cluster": region,
-                                        "Original Segment": segment,
-                                        "Mapped Segment": segment_final,
-                                        "LOB": lob_final,
-                                        "Policy Type": policy_type_final,
-                                        "Payin (CD2)": f"{value:.2f}%",
-                                        "Payin Category": get_payin_category(value),
-                                        "Calculated Payout": f"{payout:.2f}%",
-                                        "Formula Used": formula,
-                                        "Rule Explanation": rule_exp,
-                                        "Remarks": full_remark.strip()
-                                    })
-                                current_remark = ""
-                            else:
-                                current_remark += " " + item
+                cell_value = row.iloc[cd2_col]
+                if pd.isna(cell_value):
+                    continue
+                cell_str = str(cell_value).strip()
+
+                # Determine policy type from column header above
+                policy_header = str(df.iloc[1, cd2_col]).upper() if len(df) > 1 else ""
+                policy_type = "Comp" if "COMP" in policy_header else "TP"
+
+                payin_list = []
+
+                # Case 1: Age conditions → "Age 0-2: 50% Age 3+: 60%"
+                age_matches = re.finditer(r'Age\s*\d*\-?\d*\s*[:\-]\s*(\d+\.?\d*)%?|Age\s*\d*\+?\s*[:\-]\s*(\d+\.?\d*)%', cell_str, re.IGNORECASE)
+                for match in age_matches:
+                    for g in match.groups():
+                        if g:
+                            val = safe_float(g)
+                            if val is not None:
+                                payin_list.append((val, match.group(0).strip()))
+
+                # Case 2: X%/Y% → take the SMALLER value
+                slash_matches = re.findall(r'(\d+\.?\d*)\s*%?\s*/\s*(\d+\.?\d*)%?', cell_str)
+                for a, b in slash_matches:
+                    v1 = safe_float(a)
+                    v2 = safe_float(b)
+                    if v1 is not None and v2 is not None:
+                        smaller = min(v1, v2)
+                        payin_list.append((smaller, f"{v1:.1f}%/{v2:.1f}% → Smaller: {smaller:.1f}%"))
+
+                # Case 3: Single percentage
+                if not payin_list:
+                    single = safe_float(cell_str)
+                    if single is not None:
+                        payin_list.append((single, ""))
+
+                # Fallback: extract all numbers
+                if not payin_list:
+                    nums = re.findall(r'(\d+\.?\d+)%?', cell_str)
+                    for n in nums:
+                        val = safe_float(n)
+                        if val is not None:
+                            payin_list.append((val, ""))
+
+                # Create record for each payin
+                for payin, remark_text in payin_list:
+                    lob_final = override_lob if override_enabled == "true" and override_lob else "CV"
+                    segment_final = override_segment if override_enabled == "true" and override_segment else "All GVW & PCV 3W, GCV 3W"
+                    policy_type_final = override_policy_type or policy_type
+
+                    payout, formula, rule_exp = calculate_payout_with_formula(lob_final, segment_final, policy_type_final, payin)
+
+                    base_remark = f"Cluster: {cluster}"
+                    if segment: base_remark += f" | Segment: {segment}"
+                    if make != "All": base_remark += f" | Make: {make}"
+                    if age_info != "All": base_remark += f" | Age: {age_info}"
+                    if remark_text: base_remark += f" | {remark_text}"
+
+                    records.append({
+                        "State": state.upper(),
+                        "Location/Cluster": region,
+                        "Original Segment": cluster,
+                        "Mapped Segment": segment_final,
+                        "LOB": lob_final,
+                        "Policy Type": policy_type_final,
+                        "Payin (CD2)": f"{payin:.2f}%",
+                        "Payin Category": get_payin_category(payin),
+                        "Calculated Payout": f"{payout:.2f}%",
+                        "Formula Used": formula,
+                        "Rule Explanation": rule_exp,
+                        "Remarks": base_remark.strip()
+                    })
 
         return records
 
     except Exception as e:
-        print(f"Error processing CV sheet: {str(e)}")
+        print(f"Error in CV processing: {e}")
         return []
-
 # ------------------- TWO WHEELER SHEET PROCESSOR -------------------
 def process_tw_sheet(content, sheet_name, override_enabled, override_lob, override_segment, override_policy_type):
     records = []
