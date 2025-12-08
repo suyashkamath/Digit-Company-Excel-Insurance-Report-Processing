@@ -2268,7 +2268,7 @@ def process_school_bus_sheet(content, sheet_name, override_enabled, override_lob
             if not rto_cluster:
                 continue
             
-            contracts = [(2, "In name of School"), (3, "On Contract (Transporter)"), (4, "On Contract (Individual)")]
+            contracts = [(2, "In name of School"), (3, "On Contract (Transporter)"), (4, "On Contract (Individual)"),(5,"Contract transporter")]
             
             for col_idx, contract_type in contracts:
                 payin = safe_float(df.iloc[row_idx, col_idx])
